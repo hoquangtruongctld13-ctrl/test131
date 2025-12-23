@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="Free, open-source text-to-speech reader. Ditch Speechify's $139/year subscription. Listen to PDFs, articles, and documents with natural voices - 100% free, runs locally.">
+    <meta name="keywords" content="text to speech, TTS, speechify alternative, free TTS, PDF reader, document reader">
+    <meta name="author" content="Nihal Veeramalla">
+    <meta property="og:title" content="Ditch Speechify - Free TTS Reader">
+    <meta property="og:description" content="Stop paying $139/year for Speechify. Get the same features for free.">
+    <meta property="og:type" content="website">
+
+    <title>Ditch Speechify - Free Premium TTS Reader</title>
+
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Favicon -->
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎙️</text></svg>">
+</head>
+
+<body>
+    <div class="background-gradient"></div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">🎙️</div>
+                <div class="logo-text">
+                    <h1>Ditch Speechify</h1>
+                    <p class="tagline">Why pay $139/yr when this is free?</p>
+                </div>
+            </div>
+            <div class="header-badges">
+                <div class="badge badge-free">100% Free</div>
+                <a href="https://github.com/nihal-5/ditch-speechify" class="badge badge-github" target="_blank">⭐
+                    Star on GitHub</a>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Upload Section -->
+            <section class="upload-section glass">
+                <h2>📄 Upload or Paste Your Text</h2>
+                <div class="upload-area">
+                    <div class="file-upload" id="fileUpload">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        <p class="upload-text">Drop PDF, Word, or TXT file here</p>
+                        <p class="upload-subtext">or click to browse</p>
+                        <input type="file" id="fileInput" accept=".pdf,.txt,.doc,.docx" hidden>
+                    </div>
+                </div>
+                <div class="divider"><span>OR</span></div>
+                <textarea id="textInput" placeholder="Paste your text here and click Play to listen...
+
+Try it now! Just paste any article, essay, or document and hear it read aloud with natural voices.
+
+💡 Pro Tips:
+• Double-click anywhere in text to start reading from that point
+• Click Pause to save your position, Resume to continue
+• Use the Stop button to reset to beginning" rows="8"></textarea>
+                <button id="clearBtn" class="btn-secondary btn-full">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    Clear Text
+                </button>
+            </section>
+
+            <!-- Controls Section -->
+            <section class="controls-section glass">
+                <h2>🎛️ Voice Settings</h2>
+                <div class="controls-grid">
+                    <div class="control-group">
+                        <label for="voiceSelect">
+                            Voice
+                            <span class="label-hint">⭐ = Premium Quality</span>
+                        </label>
+                        <select id="voiceSelect">
+                            <option value="loading">Loading voices...</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="speedSlider">Speed: <span id="speedValue">1.0x</span></label>
+                        <input type="range" id="speedSlider" min="0.5" max="2.0" step="0.1" value="1.0">
+                    </div>
+                    <div class="control-group">
+                        <label for="pitchSlider">Pitch: <span id="pitchValue">0</span></label>
+                        <input type="range" id="pitchSlider" min="-10" max="10" step="1" value="0">
+                    </div>
+                </div>
+            </section>
+
+            <!-- Player Section -->
+            <section class="player-section glass">
+                <div class="player-controls">
+                    <button id="playBtn" class="btn-primary" disabled>
+                        <svg class="play-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                        <svg class="pause-icon hidden" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="6" y="4" width="4" height="16"></rect>
+                            <rect x="14" y="4" width="4" height="16"></rect>
+                        </svg>
+                        <span class="btn-text">Play</span>
+                    </button>
+                    <button id="stopBtn" class="btn-secondary">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="6" y="6" width="12" height="12"></rect>
+                        </svg>
+                        Stop
+                    </button>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-info">
+                        <span id="currentTime">0:00</span>
+                        <span id="duration">0:00</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Status -->
+            <div class="status-message" id="statusMessage"></div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>
+                <strong>Ditch Speechify</strong> - Open Source & Free Forever
+                <br>
+                <span class="footer-sub">Built with ❤️ • Uses your browser's native voices • No data leaves your
+                    computer</span>
+            </p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

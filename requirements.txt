@@ -1,0 +1,13 @@
+# Ditch Speechify - Dependencies
+# Install with: pip install -r requirements.txt
+
+# Web framework
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
+# File parsing
+PyPDF2>=3.0.0
+python-docx>=0.8.11
+
+# Optional: for better async support
+aiofiles>=23.0.0
