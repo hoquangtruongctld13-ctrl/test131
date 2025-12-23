@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import re
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -82,12 +83,46 @@ PIPER_OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Voice cache
 _loaded_voices: Dict[str, Any] = {}
+_training_status_lock = threading.Lock()
 _training_status: Dict[str, Any] = {
     "active": False,
     "progress": 0,
     "status": "idle",
     "log": []
 }
+
+# ============================================================================
+# Utility functions for security
+# ============================================================================
+
+def sanitize_filename(filename: str) -> str:
+    """Sanitize filename to prevent path traversal attacks."""
+    # Remove any path separators and parent directory references
+    filename = os.path.basename(filename)
+    # Remove any null bytes
+    filename = filename.replace('\x00', '')
+    # Only allow safe characters
+    safe_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-')
+    filename = ''.join(c if c in safe_chars else '_' for c in filename)
+    return filename
+
+def is_valid_url(url: str) -> bool:
+    """Validate URL for checkpoint downloads."""
+    # Only allow URLs from trusted sources
+    allowed_hosts = [
+        'huggingface.co',
+        'hf.co',
+        'github.com',
+        'raw.githubusercontent.com'
+    ]
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        return parsed.scheme in ('http', 'https') and any(
+            parsed.netloc.endswith(host) for host in allowed_hosts
+        )
+    except Exception:
+        return False
 
 # ============================================================================
 # Pydantic Models for Piper TTS
@@ -419,8 +454,8 @@ async def upload_training_audio(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid transcript JSON format")
     
-    # Create a new training session directory
-    session_id = f"session_{int(os.times().elapsed * 1000)}"
+    # Create a new training session directory with timestamp
+    session_id = f"session_{int(time.time() * 1000)}"
     session_dir = PIPER_TRAINING_DIR / session_id
     audio_dir = session_dir / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
@@ -429,8 +464,17 @@ async def upload_training_audio(
     csv_entries = []
     
     for file in files:
-        filename = file.filename
+        original_filename = file.filename
+        if not original_filename:
+            continue
+        
+        # Sanitize filename to prevent path traversal
+        filename = sanitize_filename(original_filename)
         if not filename:
+            continue
+        
+        # Validate file extension
+        if not filename.lower().endswith(('.mp3', '.wav')):
             continue
             
         # Save the file
@@ -450,18 +494,22 @@ async def upload_training_audio(
                 audio = audio.set_frame_rate(22050).set_channels(1)
                 audio.export(str(wav_path), format="wav")
                 file_path.unlink()  # Remove original MP3
-            except Exception as e:
+            except Exception:
                 # If conversion fails, keep the original
                 wav_path = file_path
         
         saved_files.append(str(wav_path.name))
         
-        # Add to CSV entries if transcript exists
+        # Add to CSV entries if transcript exists (check both original and sanitized names)
         base_name = filename.rsplit(".", 1)[0]
+        original_base = original_filename.rsplit(".", 1)[0] if original_filename else ""
+        
         if base_name in transcript_map:
             csv_entries.append(f"{wav_path.name}|{transcript_map[base_name]}")
-        elif filename in transcript_map:
-            csv_entries.append(f"{wav_path.name}|{transcript_map[filename]}")
+        elif original_base in transcript_map:
+            csv_entries.append(f"{wav_path.name}|{transcript_map[original_base]}")
+        elif original_filename in transcript_map:
+            csv_entries.append(f"{wav_path.name}|{transcript_map[original_filename]}")
     
     # Write metadata CSV
     csv_path = session_dir / "metadata.csv"
@@ -490,16 +538,32 @@ async def start_training(
     """Start voice training in the background."""
     global _training_status
     
-    if _training_status["active"]:
-        raise HTTPException(status_code=409, detail="Training is already in progress")
+    with _training_status_lock:
+        if _training_status["active"]:
+            raise HTTPException(status_code=409, detail="Training is already in progress")
     
-    session_dir = PIPER_TRAINING_DIR / session_id
+    # Sanitize session_id to prevent path traversal
+    safe_session_id = sanitize_filename(session_id)
+    session_dir = PIPER_TRAINING_DIR / safe_session_id
     if not session_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+        raise HTTPException(status_code=404, detail=f"Session '{safe_session_id}' not found")
     
     csv_path = session_dir / "metadata.csv"
     if not csv_path.exists():
         raise HTTPException(status_code=400, detail="No metadata.csv found in session")
+    
+    # Validate checkpoint URL if provided
+    validated_checkpoint = None
+    if checkpoint_url and checkpoint_url.strip():
+        if not is_valid_url(checkpoint_url.strip()):
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid checkpoint URL. Only URLs from huggingface.co and github.com are allowed."
+            )
+        validated_checkpoint = checkpoint_url.strip()
+    
+    # Sanitize voice name
+    safe_voice_name = sanitize_filename(voice_name) if voice_name else "custom_voice"
     
     audio_dir = session_dir / "audio"
     cache_dir = session_dir / "cache"
@@ -507,20 +571,21 @@ async def start_training(
     
     cache_dir.mkdir(exist_ok=True)
     
-    _training_status = {
-        "active": True,
-        "progress": 0,
-        "status": "initializing",
-        "session_id": session_id,
-        "voice_name": voice_name,
-        "log": ["Training started..."]
-    }
+    with _training_status_lock:
+        _training_status = {
+            "active": True,
+            "progress": 0,
+            "status": "initializing",
+            "session_id": safe_session_id,
+            "voice_name": safe_voice_name,
+            "log": ["Training started..."]
+        }
     
     # Start training in background
     background_tasks.add_task(
         run_training,
         session_dir=session_dir,
-        voice_name=voice_name,
+        voice_name=safe_voice_name,
         csv_path=csv_path,
         audio_dir=audio_dir,
         cache_dir=cache_dir,
@@ -528,10 +593,10 @@ async def start_training(
         language=language,
         sample_rate=sample_rate,
         batch_size=batch_size,
-        checkpoint_url=checkpoint_url
+        checkpoint_url=validated_checkpoint
     )
     
-    return {"success": True, "message": "Training started", "session_id": session_id}
+    return {"success": True, "message": "Training started", "session_id": safe_session_id}
 
 
 def run_training(
@@ -550,10 +615,11 @@ def run_training(
     global _training_status
     
     try:
-        _training_status["status"] = "preparing"
-        _training_status["log"].append("Preparing training data...")
+        with _training_status_lock:
+            _training_status["status"] = "preparing"
+            _training_status["log"].append("Preparing training data...")
         
-        # Build training command
+        # Build training command with validated/sanitized inputs
         cmd = [
             "python3", "-m", "piper.train", "fit",
             "--data.voice_name", voice_name,
@@ -568,18 +634,21 @@ def run_training(
             "--trainer.default_root_dir", str(session_dir / "checkpoints")
         ]
         
+        # Only add checkpoint if it was validated
         if checkpoint_url:
             cmd.extend(["--ckpt_path", checkpoint_url])
         
-        _training_status["status"] = "training"
-        _training_status["log"].append(f"Running: {' '.join(cmd)}")
+        with _training_status_lock:
+            _training_status["status"] = "training"
+            _training_status["log"].append(f"Running: {' '.join(cmd)}")
         
-        # Run training
+        # Run training with shell=False for security
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            shell=False
         )
         
         while True:
@@ -588,38 +657,43 @@ def run_training(
                 if not line and process.poll() is not None:
                     break
                 if line:
-                    _training_status["log"].append(line.strip())
-                    # Try to parse progress from output
-                    if "Epoch" in line:
-                        try:
-                            epoch_match = re.search(r"Epoch (\d+)", line)
-                            if epoch_match:
-                                epoch = int(epoch_match.group(1))
-                                _training_status["progress"] = min(epoch, 100)
-                        except Exception:
-                            pass
+                    with _training_status_lock:
+                        _training_status["log"].append(line.strip())
+                        # Try to parse progress from output
+                        if "Epoch" in line:
+                            try:
+                                epoch_match = re.search(r"Epoch (\d+)", line)
+                                if epoch_match:
+                                    epoch = int(epoch_match.group(1))
+                                    _training_status["progress"] = min(epoch, 100)
+                            except Exception:
+                                pass
         
         return_code = process.poll()
         
-        if return_code == 0:
-            _training_status["status"] = "completed"
-            _training_status["progress"] = 100
-            _training_status["log"].append("Training completed successfully!")
-        else:
-            _training_status["status"] = "failed"
-            _training_status["log"].append(f"Training failed with code {return_code}")
+        with _training_status_lock:
+            if return_code == 0:
+                _training_status["status"] = "completed"
+                _training_status["progress"] = 100
+                _training_status["log"].append("Training completed successfully!")
+            else:
+                _training_status["status"] = "failed"
+                _training_status["log"].append(f"Training failed with code {return_code}")
             
     except Exception as e:
-        _training_status["status"] = "error"
-        _training_status["log"].append(f"Error: {str(e)}")
+        with _training_status_lock:
+            _training_status["status"] = "error"
+            _training_status["log"].append(f"Error: {str(e)}")
     finally:
-        _training_status["active"] = False
+        with _training_status_lock:
+            _training_status["active"] = False
 
 
 @app.get("/api/piper/training/status")
 async def get_training_status():
     """Get current training status."""
-    return _training_status
+    with _training_status_lock:
+        return _training_status.copy()
 
 
 @app.post("/api/piper/training/stop")
@@ -627,11 +701,13 @@ async def stop_training():
     """Stop the current training (if running)."""
     global _training_status
     
-    if not _training_status["active"]:
-        return {"success": False, "message": "No training in progress"}
+    with _training_status_lock:
+        if not _training_status["active"]:
+            return {"success": False, "message": "No training in progress"}
     
-    _training_status["status"] = "stopping"
-    _training_status["log"].append("Training stop requested...")
+    with _training_status_lock:
+        _training_status["status"] = "stopping"
+        _training_status["log"].append("Training stop requested...")
     # Note: Actual process termination would require storing the process handle
     
     return {"success": True, "message": "Training stop requested"}

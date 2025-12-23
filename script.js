@@ -89,6 +89,32 @@ const elements = {
 };
 
 // ============================================================================
+// Security Utilities
+// ============================================================================
+
+/**
+ * Escape HTML special characters to prevent XSS
+ */
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * Escape string for use in JavaScript string literals
+ */
+function escapeJsString(str) {
+    if (!str) return '';
+    return str.replace(/\\/g, '\\\\')
+              .replace(/'/g, "\\'")
+              .replace(/"/g, '\\"')
+              .replace(/\n/g, '\\n')
+              .replace(/\r/g, '\\r');
+}
+
+// ============================================================================
 // State Management
 // ============================================================================
 
@@ -719,11 +745,11 @@ function renderVoiceLibrary() {
         downloadedContainer.innerHTML = piperState.localVoices.map(voice => `
             <div class="voice-card downloaded">
                 <div class="voice-card-header">
-                    <span class="voice-card-name">${voice.name}</span>
+                    <span class="voice-card-name">${escapeHtml(voice.name)}</span>
                     <span class="voice-card-badge">Downloaded</span>
                 </div>
                 <div class="voice-card-actions">
-                    <button class="btn-secondary" onclick="deleteVoice('${voice.name}')">Delete</button>
+                    <button class="btn-secondary" onclick="deleteVoice('${escapeJsString(voice.name)}')">Delete</button>
                 </div>
             </div>
         `).join('');
@@ -747,13 +773,13 @@ function renderVoiceLibrary() {
         availableContainer.innerHTML = filteredVoices.slice(0, 50).map(voice => `
             <div class="voice-card">
                 <div class="voice-card-header">
-                    <span class="voice-card-name">${voice.name}</span>
+                    <span class="voice-card-name">${escapeHtml(voice.name)}</span>
                 </div>
                 <div class="voice-card-info">
-                    ${voice.language || 'Unknown language'} | ${voice.quality || 'unknown'} quality
+                    ${escapeHtml(voice.language || 'Unknown language')} | ${escapeHtml(voice.quality || 'unknown')} quality
                 </div>
                 <div class="voice-card-actions">
-                    <button class="btn-primary" onclick="downloadVoice('${voice.name}')">Download</button>
+                    <button class="btn-primary" onclick="downloadVoice('${escapeJsString(voice.name)}')">Download</button>
                 </div>
             </div>
         `).join('');
@@ -957,9 +983,9 @@ function renderUploadedFiles() {
     
     container.innerHTML = piperState.uploadedFiles.map(file => `
         <div class="uploaded-file-item">
-            <span class="file-name">${file.name}</span>
+            <span class="file-name">${escapeHtml(file.name)}</span>
             <span class="file-size">${formatFileSize(file.size)}</span>
-            <button class="btn-secondary" onclick="removeUploadedFile('${file.name}')">Remove</button>
+            <button class="btn-secondary" onclick="removeUploadedFile('${escapeJsString(file.name)}')">Remove</button>
         </div>
     `).join('');
 }
@@ -980,11 +1006,11 @@ function renderTranscriptEditor() {
         const transcript = piperState.transcripts[baseName] || '';
         return `
             <div class="transcript-item">
-                <span class="file-name">${file.name}</span>
+                <span class="file-name">${escapeHtml(file.name)}</span>
                 <textarea 
                     placeholder="Enter transcript for this audio..."
-                    onchange="updateTranscript('${baseName}', this.value)"
-                >${transcript}</textarea>
+                    onchange="updateTranscript('${escapeJsString(baseName)}', this.value)"
+                >${escapeHtml(transcript)}</textarea>
             </div>
         `;
     }).join('');
